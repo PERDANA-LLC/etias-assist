@@ -68,3 +68,6 @@
 - [x] Build user CRUD API endpoints
 - [x] Create enhanced admin dashboard with user management
 - [x] Add spreadsheet-style user table with CRUD operations
+
+## Bug Fixes
+- [x] Fix super admin local login redirecting to OAuth instead of staying authenticated

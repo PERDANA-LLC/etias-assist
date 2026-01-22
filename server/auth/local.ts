@@ -3,10 +3,12 @@ import { eq } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
 import { users } from "../../drizzle/schema";
 import { SignJWT } from "jose";
-import { COOKIE_NAME } from "../../shared/const";
+import { COOKIE_NAME, ONE_YEAR_MS } from "../../shared/const";
 import { Request, Response } from "express";
+import { ENV } from "../_core/env";
 
-const JWT_SECRET = new TextEncoder().encode(process.env.JWT_SECRET || "fallback-secret");
+// Use the same secret as the SDK for session verification
+const getSessionSecret = () => new TextEncoder().encode(ENV.cookieSecret);
 
 export async function handleLocalLogin(req: Request, res: Response) {
   const { email, password } = req.body;
@@ -44,17 +46,20 @@ export async function handleLocalLogin(req: Request, res: Response) {
       .set({ lastSignedIn: new Date() })
       .where(eq(users.id, user.id));
 
-    // Create JWT token
+    // Create JWT token using the same format as SDK
+    const issuedAt = Date.now();
+    const expiresInMs = ONE_YEAR_MS;
+    const expirationSeconds = Math.floor((issuedAt + expiresInMs) / 1000);
+    const secretKey = getSessionSecret();
+
     const token = await new SignJWT({
-      sub: user.openId,
-      email: user.email,
-      name: user.name,
-      role: user.role,
+      openId: user.openId,
+      appId: ENV.appId,
+      name: user.name || "",
     })
-      .setProtectedHeader({ alg: "HS256" })
-      .setIssuedAt()
-      .setExpirationTime("7d")
-      .sign(JWT_SECRET);
+      .setProtectedHeader({ alg: "HS256", typ: "JWT" })
+      .setExpirationTime(expirationSeconds)
+      .sign(secretKey);
 
     // Set cookie
     const isSecure = req.protocol === "https" || req.headers["x-forwarded-proto"] === "https";

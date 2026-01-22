@@ -6,6 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Shield, Loader2, AlertCircle } from "lucide-react";
 import { toast } from "sonner";
+import { trpc } from "@/lib/trpc";
 
 export default function AdminLogin() {
   const [, setLocation] = useLocation();
@@ -34,7 +35,7 @@ export default function AdminLogin() {
       }
 
       toast.success("Login successful!");
-      // Redirect to admin dashboard
+      // Force a full page reload to refresh auth state
       window.location.href = "/admin";
     } catch (err) {
       setError(err instanceof Error ? err.message : "Login failed");
