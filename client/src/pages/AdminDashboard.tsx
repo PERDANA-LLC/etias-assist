@@ -1,20 +1,33 @@
-import { useEffect } from "react";
+import { useState, useEffect } from "react";
 import { useLocation } from "wouter";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { 
   Users, 
   FileText, 
   CreditCard, 
   TrendingUp,
   CheckCircle2,
-  Clock,
-  AlertCircle,
   HelpCircle,
   Loader2,
   BarChart3,
-  Activity
+  Activity,
+  Plus,
+  Pencil,
+  Trash2,
+  Search,
+  RefreshCw,
+  Shield,
+  ShieldCheck,
+  Crown,
+  UserCog
 } from "lucide-react";
 import { trpc } from "@/lib/trpc";
 import { useAuth } from "@/_core/hooks/useAuth";
@@ -22,6 +35,7 @@ import { getLoginUrl } from "@/const";
 import Header from "@/components/Header";
 import Footer from "@/components/Footer";
 import { format } from "date-fns";
+import { toast } from "sonner";
 import {
   AreaChart,
   Area,
@@ -48,32 +62,81 @@ const statusColors: Record<string, string> = {
 export default function AdminDashboard() {
   const [, navigate] = useLocation();
   const { user, isAuthenticated, loading: authLoading } = useAuth();
+  
+  // User management state
+  const [searchQuery, setSearchQuery] = useState("");
+  const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
+  const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
+  const [selectedUser, setSelectedUser] = useState<any>(null);
+  const [newUser, setNewUser] = useState({ name: "", email: "", role: "user" as "user" | "admin" });
 
-  const { data: stats, isLoading: statsLoading } = trpc.admin.getStats.useQuery(undefined, {
-    enabled: isAuthenticated && user?.role === "admin"
+  const isSuperAdmin = user?.role === "super_admin";
+  const isAdmin = user?.role === "admin" || user?.role === "super_admin";
+
+  const { data: stats, isLoading: statsLoading, refetch: refetchStats } = trpc.admin.getStats.useQuery(undefined, {
+    enabled: isAuthenticated && isAdmin
   });
 
-  const { data: applications, isLoading: appsLoading } = trpc.admin.getApplications.useQuery(undefined, {
-    enabled: isAuthenticated && user?.role === "admin"
+  const { data: applications, isLoading: appsLoading, refetch: refetchApps } = trpc.admin.getApplications.useQuery(undefined, {
+    enabled: isAuthenticated && isAdmin
   });
 
-  const { data: users, isLoading: usersLoading } = trpc.admin.getUsers.useQuery(undefined, {
-    enabled: isAuthenticated && user?.role === "admin"
+  const { data: users, isLoading: usersLoading, refetch: refetchUsers } = trpc.admin.getUsers.useQuery(undefined, {
+    enabled: isAuthenticated && isAdmin
   });
 
   const { data: dailyStats, isLoading: dailyLoading } = trpc.admin.getDailyStats.useQuery(
     { days: 30 },
-    { enabled: isAuthenticated && user?.role === "admin" }
+    { enabled: isAuthenticated && isAdmin }
   );
+
+  // Mutations for user CRUD
+  const utils = trpc.useUtils();
+  
+  const createUserMutation = trpc.admin.createUser.useMutation({
+    onSuccess: () => {
+      toast.success("User created successfully");
+      setIsCreateDialogOpen(false);
+      setNewUser({ name: "", email: "", role: "user" });
+      utils.admin.getUsers.invalidate();
+      utils.admin.getStats.invalidate();
+    },
+    onError: (error) => {
+      toast.error(error.message || "Failed to create user");
+    },
+  });
+
+  const updateUserMutation = trpc.admin.updateUser.useMutation({
+    onSuccess: () => {
+      toast.success("User updated successfully");
+      setIsEditDialogOpen(false);
+      setSelectedUser(null);
+      utils.admin.getUsers.invalidate();
+    },
+    onError: (error) => {
+      toast.error(error.message || "Failed to update user");
+    },
+  });
+
+  const deleteUserMutation = trpc.admin.deleteUser.useMutation({
+    onSuccess: () => {
+      toast.success("User deleted successfully");
+      utils.admin.getUsers.invalidate();
+      utils.admin.getStats.invalidate();
+    },
+    onError: (error) => {
+      toast.error(error.message || "Failed to delete user");
+    },
+  });
 
   useEffect(() => {
     if (!authLoading && !isAuthenticated) {
       window.location.href = getLoginUrl();
     }
-    if (!authLoading && isAuthenticated && user?.role !== "admin") {
+    if (!authLoading && isAuthenticated && !isAdmin) {
       navigate("/dashboard");
     }
-  }, [authLoading, isAuthenticated, user, navigate]);
+  }, [authLoading, isAuthenticated, user, navigate, isAdmin]);
 
   if (authLoading || statsLoading) {
     return (
@@ -83,7 +146,7 @@ export default function AdminDashboard() {
     );
   }
 
-  if (user?.role !== "admin") {
+  if (!isAdmin) {
     return null;
   }
 
@@ -108,17 +171,66 @@ export default function AdminDashboard() {
     ? ((stats.payments.total / stats.applications.total) * 100).toFixed(1)
     : "0";
 
+  // Filter users by search
+  const filteredUsers = users?.filter(u => 
+    u.name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    u.email?.toLowerCase().includes(searchQuery.toLowerCase())
+  ) || [];
+
+  const getRoleBadge = (role: string, isImmutable?: boolean) => {
+    if (role === "super_admin") {
+      return (
+        <Badge className="bg-gradient-to-r from-yellow-500 to-amber-500 text-white">
+          <Crown className="w-3 h-3 mr-1" />
+          Super Admin
+        </Badge>
+      );
+    }
+    if (role === "admin") {
+      return (
+        <Badge variant="default">
+          <ShieldCheck className="w-3 h-3 mr-1" />
+          Admin
+        </Badge>
+      );
+    }
+    return <Badge variant="secondary">User</Badge>;
+  };
+
+  const handleRefresh = () => {
+    refetchStats();
+    refetchApps();
+    refetchUsers();
+    toast.success("Data refreshed");
+  };
+
   return (
     <div className="min-h-screen flex flex-col bg-background">
       <Header />
       
       <main className="flex-1 py-8">
         <div className="container">
-          <div className="mb-8">
-            <h1 className="text-3xl font-bold">Admin Dashboard</h1>
-            <p className="text-muted-foreground">
-              Monitor system performance, user analytics, and application statistics
-            </p>
+          {/* Header */}
+          <div className="flex items-center justify-between mb-8">
+            <div>
+              <h1 className="text-3xl font-bold flex items-center gap-3">
+                {isSuperAdmin ? (
+                  <Crown className="w-8 h-8 text-yellow-500" />
+                ) : (
+                  <Shield className="w-8 h-8 text-primary" />
+                )}
+                Admin Dashboard
+              </h1>
+              <p className="text-muted-foreground">
+                {isSuperAdmin 
+                  ? "Super Administrator Access - Full Control" 
+                  : "Administrator Access - View & Monitor"}
+              </p>
+            </div>
+            <Button variant="outline" size="sm" onClick={handleRefresh}>
+              <RefreshCw className="w-4 h-4 mr-2" />
+              Refresh
+            </Button>
           </div>
 
           {/* Key Metrics */}
@@ -227,9 +339,18 @@ export default function AdminDashboard() {
 
           <Tabs defaultValue="overview" className="space-y-4">
             <TabsList>
-              <TabsTrigger value="overview">Overview</TabsTrigger>
-              <TabsTrigger value="applications">Applications</TabsTrigger>
-              <TabsTrigger value="users">Users</TabsTrigger>
+              <TabsTrigger value="overview">
+                <BarChart3 className="w-4 h-4 mr-2" />
+                Overview
+              </TabsTrigger>
+              <TabsTrigger value="users">
+                <UserCog className="w-4 h-4 mr-2" />
+                User Management
+              </TabsTrigger>
+              <TabsTrigger value="applications">
+                <FileText className="w-4 h-4 mr-2" />
+                Applications
+              </TabsTrigger>
             </TabsList>
 
             <TabsContent value="overview" className="space-y-4">
@@ -325,6 +446,266 @@ export default function AdminDashboard() {
               </div>
             </TabsContent>
 
+            {/* User Management Tab */}
+            <TabsContent value="users" className="space-y-4">
+              <Card>
+                <CardHeader>
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <CardTitle className="flex items-center gap-2">
+                        <UserCog className="w-5 h-5" />
+                        User Management
+                      </CardTitle>
+                      <CardDescription>
+                        {isSuperAdmin 
+                          ? "Full CRUD access - Create, edit, and delete users" 
+                          : "View-only access - Contact super admin for changes"}
+                      </CardDescription>
+                    </div>
+                    {isSuperAdmin && (
+                      <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
+                        <DialogTrigger asChild>
+                          <Button>
+                            <Plus className="w-4 h-4 mr-2" />
+                            Add User
+                          </Button>
+                        </DialogTrigger>
+                        <DialogContent>
+                          <DialogHeader>
+                            <DialogTitle>Create New User</DialogTitle>
+                            <DialogDescription>
+                              Add a new user to the system
+                            </DialogDescription>
+                          </DialogHeader>
+                          <div className="space-y-4 py-4">
+                            <div className="space-y-2">
+                              <Label htmlFor="name">Name</Label>
+                              <Input
+                                id="name"
+                                value={newUser.name}
+                                onChange={(e) => setNewUser({ ...newUser, name: e.target.value })}
+                                placeholder="John Doe"
+                              />
+                            </div>
+                            <div className="space-y-2">
+                              <Label htmlFor="email">Email</Label>
+                              <Input
+                                id="email"
+                                type="email"
+                                value={newUser.email}
+                                onChange={(e) => setNewUser({ ...newUser, email: e.target.value })}
+                                placeholder="john@example.com"
+                              />
+                            </div>
+                            <div className="space-y-2">
+                              <Label htmlFor="role">Role</Label>
+                              <Select
+                                value={newUser.role}
+                                onValueChange={(value: "user" | "admin") => setNewUser({ ...newUser, role: value })}
+                              >
+                                <SelectTrigger>
+                                  <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="user">User</SelectItem>
+                                  <SelectItem value="admin">Admin</SelectItem>
+                                </SelectContent>
+                              </Select>
+                            </div>
+                          </div>
+                          <DialogFooter>
+                            <Button variant="outline" onClick={() => setIsCreateDialogOpen(false)}>
+                              Cancel
+                            </Button>
+                            <Button 
+                              onClick={() => createUserMutation.mutate(newUser)}
+                              disabled={createUserMutation.isPending || !newUser.name || !newUser.email}
+                            >
+                              {createUserMutation.isPending ? (
+                                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                              ) : null}
+                              Create User
+                            </Button>
+                          </DialogFooter>
+                        </DialogContent>
+                      </Dialog>
+                    )}
+                  </div>
+                </CardHeader>
+                <CardContent>
+                  {/* Search */}
+                  <div className="flex items-center gap-4 mb-4">
+                    <div className="relative flex-1 max-w-sm">
+                      <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                      <Input
+                        placeholder="Search users..."
+                        value={searchQuery}
+                        onChange={(e) => setSearchQuery(e.target.value)}
+                        className="pl-9"
+                      />
+                    </div>
+                    <Badge variant="outline">{filteredUsers.length} users</Badge>
+                  </div>
+
+                  {usersLoading ? (
+                    <div className="flex justify-center py-8">
+                      <Loader2 className="w-6 h-6 animate-spin" />
+                    </div>
+                  ) : filteredUsers.length > 0 ? (
+                    <div className="overflow-x-auto">
+                      <table className="w-full">
+                        <thead>
+                          <tr className="border-b">
+                            <th className="text-left py-3 px-2 text-sm font-medium">ID</th>
+                            <th className="text-left py-3 px-2 text-sm font-medium">Name</th>
+                            <th className="text-left py-3 px-2 text-sm font-medium">Email</th>
+                            <th className="text-left py-3 px-2 text-sm font-medium">Role</th>
+                            <th className="text-left py-3 px-2 text-sm font-medium">Login Method</th>
+                            <th className="text-left py-3 px-2 text-sm font-medium">Last Active</th>
+                            {isSuperAdmin && <th className="text-right py-3 px-2 text-sm font-medium">Actions</th>}
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {filteredUsers.map((u: any) => (
+                            <tr key={u.id} className="border-b hover:bg-muted/50">
+                              <td className="py-3 px-2 text-sm font-mono">#{u.id}</td>
+                              <td className="py-3 px-2 text-sm font-medium">{u.name || "—"}</td>
+                              <td className="py-3 px-2 text-sm">{u.email || "—"}</td>
+                              <td className="py-3 px-2">{getRoleBadge(u.role, u.isImmutable)}</td>
+                              <td className="py-3 px-2">
+                                <Badge variant="outline">{u.loginMethod || "manus"}</Badge>
+                              </td>
+                              <td className="py-3 px-2 text-sm text-muted-foreground">
+                                {u.lastSignedIn ? format(new Date(u.lastSignedIn), "MMM d, yyyy HH:mm") : "Never"}
+                              </td>
+                              {isSuperAdmin && (
+                                <td className="py-3 px-2 text-right">
+                                  {!u.isImmutable ? (
+                                    <div className="flex items-center justify-end gap-2">
+                                      <Button
+                                        variant="ghost"
+                                        size="icon"
+                                        onClick={() => {
+                                          setSelectedUser(u);
+                                          setIsEditDialogOpen(true);
+                                        }}
+                                      >
+                                        <Pencil className="w-4 h-4" />
+                                      </Button>
+                                      <AlertDialog>
+                                        <AlertDialogTrigger asChild>
+                                          <Button variant="ghost" size="icon" className="text-destructive hover:text-destructive">
+                                            <Trash2 className="w-4 h-4" />
+                                          </Button>
+                                        </AlertDialogTrigger>
+                                        <AlertDialogContent>
+                                          <AlertDialogHeader>
+                                            <AlertDialogTitle>Delete User</AlertDialogTitle>
+                                            <AlertDialogDescription>
+                                              Are you sure you want to delete {u.name || u.email}? This action cannot be undone.
+                                            </AlertDialogDescription>
+                                          </AlertDialogHeader>
+                                          <AlertDialogFooter>
+                                            <AlertDialogCancel>Cancel</AlertDialogCancel>
+                                            <AlertDialogAction
+                                              onClick={() => deleteUserMutation.mutate({ id: u.id })}
+                                              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                                            >
+                                              Delete
+                                            </AlertDialogAction>
+                                          </AlertDialogFooter>
+                                        </AlertDialogContent>
+                                      </AlertDialog>
+                                    </div>
+                                  ) : (
+                                    <Badge variant="outline" className="text-yellow-600 border-yellow-600">
+                                      <Shield className="w-3 h-3 mr-1" />
+                                      Protected
+                                    </Badge>
+                                  )}
+                                </td>
+                              )}
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  ) : (
+                    <div className="text-center py-8 text-muted-foreground">
+                      No users found
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+
+              {/* Edit User Dialog */}
+              <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
+                <DialogContent>
+                  <DialogHeader>
+                    <DialogTitle>Edit User</DialogTitle>
+                    <DialogDescription>
+                      Update user information
+                    </DialogDescription>
+                  </DialogHeader>
+                  {selectedUser && (
+                    <div className="space-y-4 py-4">
+                      <div className="space-y-2">
+                        <Label htmlFor="edit-name">Name</Label>
+                        <Input
+                          id="edit-name"
+                          value={selectedUser.name || ""}
+                          onChange={(e) => setSelectedUser({ ...selectedUser, name: e.target.value })}
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="edit-email">Email</Label>
+                        <Input
+                          id="edit-email"
+                          type="email"
+                          value={selectedUser.email || ""}
+                          onChange={(e) => setSelectedUser({ ...selectedUser, email: e.target.value })}
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="edit-role">Role</Label>
+                        <Select
+                          value={selectedUser.role}
+                          onValueChange={(value) => setSelectedUser({ ...selectedUser, role: value })}
+                        >
+                          <SelectTrigger>
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="user">User</SelectItem>
+                            <SelectItem value="admin">Admin</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    </div>
+                  )}
+                  <DialogFooter>
+                    <Button variant="outline" onClick={() => setIsEditDialogOpen(false)}>
+                      Cancel
+                    </Button>
+                    <Button 
+                      onClick={() => updateUserMutation.mutate({
+                        id: selectedUser.id,
+                        name: selectedUser.name,
+                        email: selectedUser.email,
+                        role: selectedUser.role,
+                      })}
+                      disabled={updateUserMutation.isPending}
+                    >
+                      {updateUserMutation.isPending ? (
+                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                      ) : null}
+                      Save Changes
+                    </Button>
+                  </DialogFooter>
+                </DialogContent>
+              </Dialog>
+            </TabsContent>
+
             <TabsContent value="applications" className="space-y-4">
               <Card>
                 <CardHeader>
@@ -379,63 +760,6 @@ export default function AdminDashboard() {
                   ) : (
                     <div className="text-center py-8 text-muted-foreground">
                       No applications yet
-                    </div>
-                  )}
-                </CardContent>
-              </Card>
-            </TabsContent>
-
-            <TabsContent value="users" className="space-y-4">
-              <Card>
-                <CardHeader>
-                  <CardTitle>Registered Users</CardTitle>
-                  <CardDescription>
-                    All platform users
-                  </CardDescription>
-                </CardHeader>
-                <CardContent>
-                  {usersLoading ? (
-                    <div className="flex justify-center py-8">
-                      <Loader2 className="w-6 h-6 animate-spin" />
-                    </div>
-                  ) : users && users.length > 0 ? (
-                    <div className="overflow-x-auto">
-                      <table className="w-full">
-                        <thead>
-                          <tr className="border-b">
-                            <th className="text-left py-3 px-2 text-sm font-medium">ID</th>
-                            <th className="text-left py-3 px-2 text-sm font-medium">Name</th>
-                            <th className="text-left py-3 px-2 text-sm font-medium">Email</th>
-                            <th className="text-left py-3 px-2 text-sm font-medium">Role</th>
-                            <th className="text-left py-3 px-2 text-sm font-medium">Joined</th>
-                            <th className="text-left py-3 px-2 text-sm font-medium">Last Active</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {users.slice(0, 20).map((u) => (
-                            <tr key={u.id} className="border-b hover:bg-muted/50">
-                              <td className="py-3 px-2 text-sm">#{u.id}</td>
-                              <td className="py-3 px-2 text-sm">{u.name || "-"}</td>
-                              <td className="py-3 px-2 text-sm">{u.email || "-"}</td>
-                              <td className="py-3 px-2">
-                                <Badge variant={u.role === "admin" ? "default" : "secondary"}>
-                                  {u.role}
-                                </Badge>
-                              </td>
-                              <td className="py-3 px-2 text-sm text-muted-foreground">
-                                {format(new Date(u.createdAt), "MMM d, yyyy")}
-                              </td>
-                              <td className="py-3 px-2 text-sm text-muted-foreground">
-                                {format(new Date(u.lastSignedIn), "MMM d, yyyy")}
-                              </td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  ) : (
-                    <div className="text-center py-8 text-muted-foreground">
-                      No users yet
                     </div>
                   )}
                 </CardContent>

@@ -13,10 +13,18 @@ import {
   HELP_TOPICS 
 } from "../shared/etias";
 
-// Admin-only procedure
+// Admin-only procedure (allows admin and super_admin)
 const adminProcedure = protectedProcedure.use(({ ctx, next }) => {
-  if (ctx.user.role !== 'admin') {
+  if (ctx.user.role !== 'admin' && ctx.user.role !== 'super_admin') {
     throw new TRPCError({ code: 'FORBIDDEN', message: 'Admin access required' });
+  }
+  return next({ ctx });
+});
+
+// Super admin only procedure
+const superAdminProcedure = protectedProcedure.use(({ ctx, next }) => {
+  if (ctx.user.role !== 'super_admin') {
+    throw new TRPCError({ code: 'FORBIDDEN', message: 'Super admin access required' });
   }
   return next({ ctx });
 });
@@ -466,6 +474,52 @@ Available topics: ${Object.values(HELP_TOPICS).join(', ')}`;
       }))
       .query(async ({ input }) => {
         return db.getAnalyticsStats(input.startDate, input.endDate);
+      }),
+
+    // User CRUD operations (super admin only for create/update/delete)
+    createUser: superAdminProcedure
+      .input(z.object({
+        name: z.string().min(1),
+        email: z.string().email(),
+        role: z.enum(["user", "admin"]),
+      }))
+      .mutation(async ({ input }) => {
+        const openId = `manual_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+        const userId = await db.createUser({
+          openId,
+          name: input.name,
+          email: input.email,
+          loginMethod: "manual",
+          role: input.role,
+          isImmutable: false,
+        });
+        return { success: true, userId };
+      }),
+
+    updateUser: superAdminProcedure
+      .input(z.object({
+        id: z.number(),
+        name: z.string().min(1).optional(),
+        email: z.string().email().optional(),
+        role: z.enum(["user", "admin"]).optional(),
+      }))
+      .mutation(async ({ input }) => {
+        const { id, ...data } = input;
+        await db.updateUser(id, data);
+        return { success: true };
+      }),
+
+    deleteUser: superAdminProcedure
+      .input(z.object({ id: z.number() }))
+      .mutation(async ({ input }) => {
+        await db.deleteUser(input.id);
+        return { success: true };
+      }),
+
+    getUserById: adminProcedure
+      .input(z.object({ id: z.number() }))
+      .query(async ({ input }) => {
+        return db.getUserById(input.id);
       }),
   }),
 });

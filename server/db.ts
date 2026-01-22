@@ -100,7 +100,82 @@ export async function getUserByOpenId(openId: string) {
 export async function getAllUsers() {
   const db = await getDb();
   if (!db) return [];
-  return db.select().from(users).orderBy(desc(users.createdAt));
+  return db.select({
+    id: users.id,
+    openId: users.openId,
+    name: users.name,
+    email: users.email,
+    loginMethod: users.loginMethod,
+    role: users.role,
+    isImmutable: users.isImmutable,
+    createdAt: users.createdAt,
+    updatedAt: users.updatedAt,
+    lastSignedIn: users.lastSignedIn,
+  }).from(users).orderBy(desc(users.createdAt));
+}
+
+export async function getUserById(id: number) {
+  const db = await getDb();
+  if (!db) return undefined;
+  const result = await db.select().from(users).where(eq(users.id, id)).limit(1);
+  return result[0];
+}
+
+export async function createUser(data: {
+  openId: string;
+  name?: string;
+  email?: string;
+  password?: string;
+  loginMethod?: string;
+  role?: "user" | "admin" | "super_admin";
+  isImmutable?: boolean;
+}) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  
+  const result = await db.insert(users).values({
+    openId: data.openId,
+    name: data.name,
+    email: data.email,
+    password: data.password,
+    loginMethod: data.loginMethod || "manus",
+    role: data.role || "user",
+    isImmutable: data.isImmutable || false,
+  });
+  return result[0].insertId;
+}
+
+export async function updateUser(id: number, data: {
+  name?: string;
+  email?: string;
+  role?: "user" | "admin" | "super_admin";
+}) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  
+  // Check if user is immutable
+  const user = await getUserById(id);
+  if (user?.isImmutable) {
+    throw new Error("Cannot modify immutable user");
+  }
+  
+  await db.update(users).set({
+    ...data,
+    updatedAt: new Date(),
+  }).where(eq(users.id, id));
+}
+
+export async function deleteUser(id: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  
+  // Check if user is immutable
+  const user = await getUserById(id);
+  if (user?.isImmutable) {
+    throw new Error("Cannot delete immutable user");
+  }
+  
+  await db.delete(users).where(eq(users.id, id));
 }
 
 export async function getUserCount() {
@@ -384,14 +459,6 @@ export async function getHelpQueryStats() {
 
 
 // ============ ADDITIONAL HELPERS ============
-
-export async function getUserById(id: number) {
-  const db = await getDb();
-  if (!db) return undefined;
-  
-  const result = await db.select().from(users).where(eq(users.id, id)).limit(1);
-  return result[0];
-}
 
 export async function updatePaymentByApplicationId(applicationId: number, data: Partial<InsertPayment>) {
   const db = await getDb();

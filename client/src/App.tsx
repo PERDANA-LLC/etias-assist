@@ -11,6 +11,7 @@ import Dashboard from "./pages/Dashboard";
 import AdminDashboard from "./pages/AdminDashboard";
 import Payment from "./pages/Payment";
 import Success from "./pages/Success";
+import AdminLogin from "./pages/AdminLogin";
 
 function Router() {
   return (
@@ -21,6 +22,7 @@ function Router() {
       <Route path="/application/:id" component={Application} />
       <Route path="/dashboard" component={Dashboard} />
       <Route path="/admin" component={AdminDashboard} />
+      <Route path="/admin/login" component={AdminLogin} />
       <Route path="/payment/:applicationId" component={Payment} />
       <Route path="/success/:applicationId" component={Success} />
       <Route path="/404" component={NotFound} />

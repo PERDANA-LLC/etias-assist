@@ -31,6 +31,10 @@ async function startServer() {
   const app = express();
   const server = createServer(app);
   
+  // Seed super admin on startup
+  const { seedSuperAdmin } = await import("../seed-superadmin");
+  await seedSuperAdmin();
+  
   // Stripe webhook must be registered BEFORE body parser to get raw body
   const { handleStripeWebhook } = await import("../stripe/webhook");
   app.post("/api/stripe/webhook", express.raw({ type: "application/json" }), handleStripeWebhook);
@@ -38,6 +42,11 @@ async function startServer() {
   // Configure body parser with larger size limit for file uploads
   app.use(express.json({ limit: "50mb" }));
   app.use(express.urlencoded({ limit: "50mb", extended: true }));
+  
+  // Local auth route for super admin
+  const { handleLocalLogin } = await import("../auth/local");
+  app.post("/api/auth/login", handleLocalLogin);
+  
   // OAuth callback under /api/oauth/callback
   registerOAuthRoutes(app);
   // tRPC API

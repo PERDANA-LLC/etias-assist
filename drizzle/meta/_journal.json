@@ -22,6 +22,13 @@
       "when": 1769091664495,
       "tag": "0002_burly_speedball",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "5",
+      "when": 1769092344193,
+      "tag": "0003_abandoned_joshua_kane",
+      "breakpoints": true
     }
   ]
 }
