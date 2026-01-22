@@ -57,7 +57,7 @@ export default function Header() {
               </Link>
             );
           })}
-          {user?.role === "admin" && (
+          {(user?.role === "admin" || user?.role === "super_admin") && (
             <Link
               href="/admin"
               className={`text-sm font-medium transition-colors hover:text-primary ${
@@ -112,7 +112,7 @@ export default function Header() {
                     My Applications
                   </Link>
                 </DropdownMenuItem>
-                {user?.role === "admin" && (
+                {(user?.role === "admin" || user?.role === "super_admin") && (
                   <DropdownMenuItem asChild>
                     <Link href="/admin" className="cursor-pointer">
                       <Settings className="mr-2 h-4 w-4" />
@@ -166,7 +166,7 @@ export default function Header() {
                 </Link>
               );
             })}
-            {user?.role === "admin" && (
+            {(user?.role === "admin" || user?.role === "super_admin") && (
               <Link
                 href="/admin"
                 onClick={() => setMobileMenuOpen(false)}

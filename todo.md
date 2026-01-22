@@ -71,3 +71,6 @@
 
 ## Bug Fixes
 - [x] Fix super admin local login redirecting to OAuth instead of staying authenticated
+
+## Navigation Updates
+- [x] Add Admin Dashboard link to home page navigation (visible only for admin/super_admin users)
