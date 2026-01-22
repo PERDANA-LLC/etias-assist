@@ -1,0 +1,1 @@
+ALTER TABLE `notifications` MODIFY COLUMN `type` enum('application_started','eligibility_confirmed','payment_received','payment_failed','application_ready','reminder_incomplete','admin_alert') NOT NULL;
